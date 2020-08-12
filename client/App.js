@@ -2,13 +2,16 @@ import React, {useState, useEffect} from 'react';
 import {StyleSheet, Text, TextInput, View} from 'react-native';
 import MapView, {Marker} from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
+import PolyLine from '@mapbox/polyline';
 import _ from 'lodash';
 import {API_KEY} from './secert';
+
 const App = () => {
   const [position, setPosition] = useState({lat: 0, long: 0});
   const [error, setError] = useState(null);
   const [destination, setDestination] = useState('');
   const [predictionArr, setPredicitonArr] = useState([]);
+  const [pointCoordsArr, setPointCoordsArr] = useState([]);
 
   useEffect(() => {
     Geolocation.getCurrentPosition(
@@ -23,6 +26,27 @@ const App = () => {
     );
   }, []);
 
+  const getRouteDirections = async () => {
+    const apiUrl = `https://maps.googleapis.com/maps/api/directions/json?key=${API_KEY}&origin=${position.lat},${position.long}&destination=universal%2Bstudios%2Bhollywood`;
+    try {
+      const result = await fetch(apiUrl);
+      const json = await result.json();
+      const points = await PolyLine.decode(
+        json.routes[0].overview_polyline.points,
+      );
+      const pointCoords = points.map((p) => {
+        return {latitude: p[0], longitude: p[1]};
+      });
+      setPointCoordsArr(pointCoords);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    position.lat && position.long ? getRouteDirections() : null;
+  }, [position]);
+
   const onChangeDesintation = async (text) => {
     const apiUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?key=${API_KEY}&input=${text}&location=${position.lat},${position.long}&radius=2000`;
     try {
@@ -33,14 +57,17 @@ const App = () => {
       console.error(e);
     }
   };
+
   const debounceOnChangeDesintation = _.debounce(onChangeDesintation, 1000);
 
   const renderPrediction = () =>
-    predictionArr.map(({id, description}) => (
-      <Text style={styles.suggestions} key={id}>
-        {description}
-      </Text>
-    ));
+    predictionArr.map(({description, id}) =>
+      id ? (
+        <Text style={styles.suggestions} key={id}>
+          {description}
+        </Text>
+      ) : null,
+    );
 
   return (
     <View style={styles.container}>
@@ -52,7 +79,13 @@ const App = () => {
           latitudeDelta: 0.015,
           longitudeDelta: 0.0121,
         }}
-        showsUserLocation={true}></MapView>
+        showsUserLocation={true}
+      />
+      <MapView.Polyline
+        coordinates={pointCoordsArr}
+        strokeWidth={2}
+        strokeColor="red"
+      />
       <TextInput
         style={styles.destinationInput}
         value={destination}
@@ -78,7 +111,7 @@ const styles = StyleSheet.create({
   destinationInput: {
     height: 40,
     borderWidth: 0.5,
-    borderRadius: 100 / 50,
+    borderRadius: 100 / 2,
     marginHorizontal: 5,
     marginTop: 50,
     backgroundColor: 'white',
